@@ -1,0 +1,392 @@
+Option Explicit
+
+Private Type WordVector
+    wordCounts As Scripting.Dictionary
+    Magnitude As Double
+End Type
+
+Public Sub AnalyzeProductSimilarity()
+    ' Declare all variables at start
+    Dim ws As Worksheet
+    Dim lastRow As Long
+    Dim i As Long, j As Long
+    Dim word As Variant
+    Dim row As Long
+    Dim shortDesc As String
+    Dim commonWords As String
+    Dim sim As Double
+    Dim simValue As Double
+    Dim temp As Double, tempDesc1 As String, tempDesc2 As String
+    
+    ' Arrays
+    Dim descriptions() As String
+    Dim vectors() As WordVector
+    
+    ' Worksheet variables
+    Dim vectorWs As Worksheet
+    Dim matrixWs As Worksheet
+    Dim chartWs As Worksheet
+    
+    ' Chart variables
+    Dim chartRange As Range
+    Dim chartObj As ChartObject
+    Dim formatRange As Range
+    
+    ' Collections
+    Dim simList As New Collection
+    Dim simDesc1 As New Collection
+    Dim simDesc2 As New Collection
+    
+    ' Dictionary
+    Dim allWords As New Scripting.Dictionary
+    
+    On Error GoTo ErrorHandler
+    
+    ' Initialize worksheets
+    Set ws = ThisWorkbook.Sheets("ProductData")
+    
+    ' Read product descriptions
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).row
+    ReDim descriptions(1 To lastRow - 1)
+    
+    For i = 2 To lastRow
+        descriptions(i - 1) = ws.Cells(i, "A").Value
+    Next i
+    
+    ' Create and vectorize descriptions
+    ReDim vectors(1 To UBound(descriptions))
+    For i = 1 To UBound(descriptions)
+        vectors(i) = VectorizeText(descriptions(i), allWords)
+    Next i
+    
+    ' Create Vector Representation Sheet
+    On Error Resume Next
+    Set vectorWs = ThisWorkbook.Sheets("VectorRepresentations")
+    If vectorWs Is Nothing Then
+        Set vectorWs = ThisWorkbook.Sheets.Add(After:=ws)
+        vectorWs.Name = "VectorRepresentations"
+    End If
+    On Error GoTo ErrorHandler
+    
+    Application.ScreenUpdating = False
+    
+    ' Clear and setup vector sheet
+    With vectorWs
+        .Cells.Clear
+        .Cells(1, 1).Value = "Word"
+        
+        For i = 1 To UBound(descriptions)
+            .Cells(1, i + 1).Value = "Description " & i
+        Next i
+        
+        ' Write word vectors
+        row = 2
+        For Each word In allWords.Keys
+            .Cells(row, 1).Value = word
+            
+            For i = 1 To UBound(vectors)
+                If vectors(i).wordCounts.Exists(word) Then
+                    .Cells(row, i + 1).Value = vectors(i).wordCounts(word)
+                Else
+                    .Cells(row, i + 1).Value = 0
+                End If
+            Next i
+            row = row + 1
+        Next word
+        
+        ' Add and format magnitude row
+        .Cells(row, 1).Value = "Vector Magnitude"
+        For i = 1 To UBound(vectors)
+            .Cells(row, i + 1).Value = vectors(i).Magnitude
+        Next i
+        
+        ' Format sheet
+        .Range("A1:" & .Cells(1, UBound(descriptions) + 1).Address).Font.Bold = True
+        .Columns.AutoFit
+        .Range(.Cells(row, 1), .Cells(row, UBound(descriptions) + 1)).Interior.Color = RGB(220, 230, 241)
+    End With
+    
+    ' Create Matrix Sheet
+    On Error Resume Next
+    Set matrixWs = ThisWorkbook.Sheets("SimilarityMatrix")
+    If matrixWs Is Nothing Then
+        Set matrixWs = ThisWorkbook.Sheets.Add(After:=vectorWs)
+        matrixWs.Name = "SimilarityMatrix"
+    End If
+    On Error GoTo ErrorHandler
+    
+    With matrixWs
+        .Cells.Clear
+        
+        ' Set up matrix headers
+        .Cells(1, 1).Value = "Description Matrix"
+        .Range("A1").Font.Bold = True
+        .Range("A1").Font.Size = 14
+        
+        ' Add descriptions as headers
+        For i = 1 To UBound(descriptions)
+            shortDesc = Left(descriptions(i), 20) & IIf(Len(descriptions(i)) > 20, "...", "")
+            .Cells(i + 2, 1).Value = shortDesc
+            .Cells(1, i + 1).Value = shortDesc
+        Next i
+        
+        ' Fill similarity matrix
+        For i = 1 To UBound(vectors)
+            For j = 1 To UBound(vectors)
+                If i = j Then
+                    .Cells(i + 2, j + 1).Value = 1
+                ElseIf j > i Then
+                    sim = CalculateCosineSimilarity(vectors(i), vectors(j), commonWords)
+                    .Cells(i + 2, j + 1).Value = sim
+                Else
+                    .Cells(i + 2, j + 1).Value = .Cells(j + 2, i + 1).Value
+                End If
+            Next j
+        Next i
+        
+        ' Format matrix
+        Set formatRange = .Range(.Cells(3, 2), .Cells(UBound(vectors) + 2, UBound(vectors) + 1))
+        formatRange.NumberFormat = "0.00"
+        
+        ' Apply heatmap formatting
+        With formatRange
+            .FormatConditions.Delete
+            
+            .FormatConditions.Add Type:=xlCellValue, Operator:=xlBetween, _
+                Formula1:="=0", Formula2:="=0.2"
+            .FormatConditions(1).Interior.Color = RGB(255, 255, 255)
+            
+            .FormatConditions.Add Type:=xlCellValue, Operator:=xlBetween, _
+                Formula1:="=0.2", Formula2:="=0.4"
+            .FormatConditions(2).Interior.Color = RGB(208, 216, 242)
+            
+            .FormatConditions.Add Type:=xlCellValue, Operator:=xlBetween, _
+                Formula1:="=0.4", Formula2:="=0.6"
+            .FormatConditions(3).Interior.Color = RGB(162, 178, 229)
+            
+            .FormatConditions.Add Type:=xlCellValue, Operator:=xlBetween, _
+                Formula1:="=0.6", Formula2:="=0.8"
+            .FormatConditions(4).Interior.Color = RGB(114, 141, 216)
+            
+            .FormatConditions.Add Type:=xlCellValue, Operator:=xlBetween, _
+                Formula1:="=0.8", Formula2:="=1"
+            .FormatConditions(5).Interior.Color = RGB(65, 105, 225)
+        End With
+        
+        ' Format headers and layout
+        .Range("A1").Interior.Color = RGB(240, 240, 240)
+        .Range(.Cells(1, 2), .Cells(1, UBound(vectors) + 1)).Interior.Color = RGB(240, 240, 240)
+        .Range(.Cells(3, 1), .Cells(UBound(vectors) + 2, 1)).Interior.Color = RGB(240, 240, 240)
+        .Range(.Cells(1, 1), .Cells(UBound(vectors) + 2, UBound(vectors) + 1)).Borders.LineStyle = xlContinuous
+        .Columns("A").AutoFit
+        .Rows("1").RowHeight = 30
+        .Range(.Cells(1, 2), .Cells(1, UBound(vectors) + 1)).Orientation = 90
+        .Range(.Cells(1, 1), .Cells(UBound(vectors) + 2, UBound(vectors) + 1)).HorizontalAlignment = xlCenter
+        
+        ' Add legend
+        .Cells(1, UBound(vectors) + 3).Value = "Legend:"
+        .Cells(2, UBound(vectors) + 3).Value = "Dark Blue = High Similarity"
+        .Cells(3, UBound(vectors) + 3).Value = "White = Low Similarity"
+        .Range(.Cells(1, UBound(vectors) + 3), .Cells(3, UBound(vectors) + 3)).Font.Bold = True
+    End With
+    
+    ' Create Chart Sheet
+    On Error Resume Next
+    Set chartWs = ThisWorkbook.Sheets("SimilarityChart")
+    If chartWs Is Nothing Then
+        Set chartWs = ThisWorkbook.Sheets.Add(After:=matrixWs)
+        chartWs.Name = "SimilarityChart"
+    End If
+    On Error GoTo ErrorHandler
+    
+    ' Prepare chart data
+    For i = 1 To UBound(vectors)
+        For j = i + 1 To UBound(vectors)
+            simValue = CalculateCosineSimilarity(vectors(i), vectors(j), commonWords)
+            simList.Add simValue
+            simDesc1.Add Left(descriptions(i), 20) & IIf(Len(descriptions(i)) > 20, "...", "")
+            simDesc2.Add Left(descriptions(j), 20) & IIf(Len(descriptions(j)) > 20, "...", "")
+        Next j
+    Next i
+    
+    ' Sort similarities
+    For i = 1 To simList.Count
+        For j = 1 To simList.Count - 1
+            If simList(j) < simList(j + 1) Then
+                temp = simList(j)
+                simList.Remove j
+                simList.Add temp, , , j
+                
+                tempDesc1 = simDesc1(j)
+                simDesc1.Remove j
+                simDesc1.Add tempDesc1, , , j
+                
+                tempDesc2 = simDesc2(j)
+                simDesc2.Remove j
+                simDesc2.Add tempDesc2, , , j
+            End If
+        Next j
+    Next i
+    
+    ' Create chart
+    With chartWs
+        .Cells.Clear
+        .Cells(1, 1).Value = "Description Pair"
+        .Cells(1, 2).Value = "Similarity"
+        
+        For i = 1 To simList.Count
+            .Cells(i + 1, 1).Value = simDesc1(i) & " - " & simDesc2(i)
+            .Cells(i + 1, 2).Value = simList(i)
+        Next i
+        
+        .Columns("A:B").AutoFit
+        .Range("A1:B1").Font.Bold = True
+        .Range("B2:B" & simList.Count + 1).NumberFormat = "0.00"
+        
+        Set chartRange = .Range("A1:B" & simList.Count + 1)
+        
+        Set chartObj = .ChartObjects.Add( _
+            Left:=.Columns("D").Left, _
+            Top:=.Rows("2").Top, _
+            Width:=450, _
+            Height:=300)
+            
+        With chartObj.Chart
+            .SetSourceData Source:=chartRange
+            .ChartType = xlColumnClustered
+            
+            .HasTitle = True
+            .ChartTitle.Text = "Document Similarity Rankings"
+            
+            With .Axes(xlCategory)
+                .HasTitle = True
+                .AxisTitle.Text = "Document Pairs"
+                .TickLabelOrientation = xlTickLabelOrientationUpward
+            End With
+            
+            With .Axes(xlValue)
+                .HasTitle = True
+                .AxisTitle.Text = "Similarity Score"
+                .MinimumScale = 0
+                .MaximumScale = 1
+            End With
+            
+            With .SeriesCollection(1)
+                .Format.Fill.ForeColor.RGB = RGB(65, 105, 225)
+                .HasDataLabels = True
+                .DataLabels.NumberFormat = "0.00"
+            End With
+        End With
+        
+        ' Add explanation
+        .Cells(1, 6).Value = "About this Chart:"
+        .Cells(2, 6).Value = "• Shows all document pairs ranked by similarity"
+        .Cells(3, 6).Value = "• Higher bars indicate more similar content"
+        .Cells(4, 6).Value = "• Complements the matrix view by showing relative rankings"
+        .Range("F1:F4").Font.Bold = True
+    End With
+
+Cleanup:
+    ' Clean up
+    Application.ScreenUpdating = True
+    Set chartObj = Nothing
+    Set chartRange = Nothing
+    Set formatRange = Nothing
+    Set vectorWs = Nothing
+    Set matrixWs = Nothing
+    Set chartWs = Nothing
+    Set ws = Nothing
+    Exit Sub
+
+ErrorHandler:
+    MsgBox "An error occurred: " & Err.Description
+    Resume Cleanup
+End Sub
+
+Private Function VectorizeText(text As String, allWords As Scripting.Dictionary) As WordVector
+    Dim vector As WordVector
+    Set vector.wordCounts = New Scripting.Dictionary
+    
+    ' Split text into words and clean
+    Dim words() As String
+    words = Split(LCase(text), " ")
+    
+    ' Count word frequencies
+    Dim word As Variant
+    For Each word In words
+        ' Clean the word
+        word = CleanWord(CStr(word))
+        If Len(word) > 0 Then
+            ' Add to word counts
+            If vector.wordCounts.Exists(word) Then
+                vector.wordCounts(word) = vector.wordCounts(word) + 1
+            Else
+                vector.wordCounts.Add word, 1
+            End If
+            
+            ' Add to global word list
+            If Not allWords.Exists(word) Then
+                allWords.Add word, 1
+            End If
+        End If
+    Next word
+    
+    ' Calculate magnitude
+    vector.Magnitude = CalculateMagnitude(vector.wordCounts)
+    
+    VectorizeText = vector
+End Function
+
+Private Function CleanWord(word As String) As String
+    ' Remove punctuation and special characters
+    Dim cleanedWord As String
+    Dim i As Long
+    Dim char As String
+    
+    For i = 1 To Len(word)
+        char = Mid(word, i, 1)
+        If char Like "[a-z0-9]" Then
+            cleanedWord = cleanedWord & char
+        End If
+    Next i
+    
+    CleanWord = cleanedWord
+End Function
+
+Private Function CalculateMagnitude(wordCounts As Scripting.Dictionary) As Double
+    Dim sumSquares As Double
+    Dim word As Variant
+    
+    For Each word In wordCounts.Keys
+        sumSquares = sumSquares + (wordCounts(word) ^ 2)
+    Next word
+    
+    CalculateMagnitude = Sqr(sumSquares)
+End Function
+
+Private Function CalculateCosineSimilarity(vec1 As WordVector, vec2 As WordVector, ByRef commonWords As String) As Double
+    Dim dotProduct As Double
+    Dim word As Variant
+    Dim commonWordsList As String
+    
+    ' Calculate dot product and track common words
+    For Each word In vec1.wordCounts.Keys
+        If vec2.wordCounts.Exists(word) Then
+            dotProduct = dotProduct + (vec1.wordCounts(word) * vec2.wordCounts(word))
+            If Len(commonWordsList) > 0 Then
+                commonWordsList = commonWordsList & ", "
+            End If
+            commonWordsList = commonWordsList & word
+        End If
+    Next word
+    
+    ' Store common words
+    commonWords = commonWordsList
+    
+    ' Calculate similarity
+    If vec1.Magnitude * vec2.Magnitude > 0 Then
+        CalculateCosineSimilarity = dotProduct / (vec1.Magnitude * vec2.Magnitude)
+    Else
+        CalculateCosineSimilarity = 0
+    End If
+End Function
