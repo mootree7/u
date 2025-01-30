@@ -1,0 +1,28 @@
+Q#: 1.1
+
+Due diligence question: Documents and outlines a governance and oversight body to monitor adherence to regulatory requirements
+
+Question type: Design
+
+High impact?: Yes
+
+Scoring guidance: Meets: Third party provides an artifact that meets responsibility. Meets with observation: Third party does not have compliance policy, however they requested monitoring. Does not meet: Third party doesn't meet guidelines or observation criteria. N/A: This selection is not applicable to the third party in question
+
+Individual question score: Meets
+
+Score commentary and justification: The provided artifact evidences a governance success and the  pdf linked outlines the success of the contractor in meeting the sales criteria with a 90% success rate on long term goals set and outlined by them with oversight from the company
+
+Q#: 11.8
+
+Due diligence question: Documents and outlines a governance and oversight body to monitor adherence to regulatory requirements
+
+Question type: Strength
+
+High impact?: Yes
+
+Scoring guidance: Meets: Third party  sales practices program testing shows no violations. Meets with observation: Third party did not provide evidence of sales practices reporting - however indicates such reporting does exist. Does not meet: Third party provided evidence does not indicate sales practices reporting was communicated to senior management. N/A: If third party is not selling products or services mark as N/A
+
+Individual question score: Meets with observation
+
+Score commentary and justification: The vendor does not provide evidence of sales practices status reporting, but indicates that such reporting does exist and will be shared after a signed contract is in place during compliance ongoing monitoring execution.
+

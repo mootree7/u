@@ -1,6 +1,5 @@
 import pandas as pd
 from typing import Dict, List
-import snowflake.connector
 from datetime import datetime
 
 class SalesforceValidator:
